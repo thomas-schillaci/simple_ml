@@ -12,20 +12,19 @@ class MLP(nn.Module):
 
     def __init__(self):
         super().__init__()
-        self.linear1 = nn.Linear(28 * 28, 1000)
-        self.linear2 = nn.Linear(1000, 10)
+        self.linear = nn.Linear(28 * 28, 1000)
+        self.logits = nn.Linear(1000, 10)
 
     def forward(self, x):
         x = torch.flatten(x, 1)
-        x = self.linear1(x)
+        x = self.linear(x)
         x = torch.relu(x)
-        x = self.linear2(x)
-        # x = torch.softmax(x, -1)
+        x = self.logits(x)
         return x
 
 
-def setup(config):
-    train_loader = torch.utils.data.DataLoader(
+def get_data(config):
+    train_data = torch.utils.data.DataLoader(
         torchvision.datasets.MNIST(
             'files/',
             train=True,
@@ -39,7 +38,7 @@ def setup(config):
         pin_memory=True
     )
 
-    test_loader = torch.utils.data.DataLoader(
+    test_data = torch.utils.data.DataLoader(
         torchvision.datasets.MNIST(
             'files/',
             train=False,
@@ -52,45 +51,27 @@ def setup(config):
         pin_memory=True
     )
 
-    model = MLP().to(config.device)
-
-    return train_loader, test_loader, model
+    return train_data, test_data
 
 
-def train(config, data, val_data, model):
-    optimizer = torch.optim.AdamW(model.parameters(), lr=config.lr)
-    criterion = nn.CrossEntropyLoss()
-    metrics = {}
-    losses = []
-    val_losses = [float('nan')]
+def forward_batch(config, x, y, model, criterion, optimizer=None):
+    x = x.to(config.device)
+    y = y.to(config.device)
+    x_pred = model(x)
 
-    for epoch in range(config.epochs):
-        trange = tqdm(total=len(data), desc=f'Epoch {epoch + 1}/{config.epochs}')
-        for x, y in data:
-            x = x.to(config.device)
-            y = y.to(config.device)
-            x_pred = model(x)
+    loss = criterion(x_pred, y)
+    if optimizer is not None:
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
 
-            loss = criterion(x_pred, y)
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+    loss = float(loss)
+    accuracy = int(torch.sum(torch.argmax(x_pred, 1) == y)) / config.batch_size
 
-            loss = float(loss)
-            losses.append(loss)
-            loss = format(loss, '.3e')
-            metrics['loss'] = loss
-            trange.set_postfix_str(metrics)
-            trange.update()
+    return loss, accuracy
 
-        if epoch % config.eval_every == 0:
-            val_loss = eval(config, val_data, model, criterion)
-            val_losses.append(val_loss)
-            val_loss = format(val_loss, '.3e')
-            metrics['val_loss'] = val_loss
-            trange.set_postfix_str(metrics)
-            trange.update()
 
+def show_curves(losses, val_losses, accuracies, val_accuracies):
     plot.semilogy(losses)
     plot.semilogy(np.linspace(0, len(losses) - 1, len(val_losses)), val_losses)
 
@@ -104,31 +85,39 @@ def train(config, data, val_data, model):
 
     plot.show()
 
+    plot.plot(accuracies)
+    plot.plot(np.linspace(0, len(accuracies) - 1, len(val_accuracies)), val_accuracies)
 
-def eval(config, data, model, criterion):
-    model.eval()
+    plot.title('Training accuracies')
+    plot.xlabel('Epoch')
+    plot.ylabel('Accuracy')
+    plot.legend(['accuracy', 'val_accuracy'])
+    x_ticks = np.arange(config.epochs + 1)
+    x_locs = np.linspace(0, len(accuracies) - 1, len(x_ticks))
+    plot.xticks(x_locs, x_ticks)
 
-    val_loss = 0
-    for x, y in data:
-        x = x.to(config.device)
-        y = y.to(config.device)
-        x_pred = model(x)
-
-        loss = criterion(x_pred, y)
-        val_loss += float(loss)
-
-    val_loss /= len(data)
-
-    model.train()
-
-    return val_loss
+    plot.show()
 
 
-def test(config, data, model):
-    pass
+def visualize_predictions(config, data, model):
+    data = iter(data)
+    for i in range(5):
+        for j in range(5):
+            index = np.random.randint(config.batch_size)
+            x, y = next(data)
+            x = x.to(config.device)
+            y = y.to(config.device)
+            x_pred = int(torch.argmax(model(x)[index], 0))
+            x = 1 - x[index, 0].cpu()
+            y = int(y[index])
 
+            plot.subplot(5, 5, i * 5 + j + 1)
+            plot.title(x_pred, color='green' if x_pred == y else 'red')
+            plot.axis('off')
+            plot.imshow(x)
 
-model = torch
+    plot.show()
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -150,6 +139,50 @@ if __name__ == '__main__':
 
     plot.style.use('seaborn-darkgrid')
 
-    train_data, test_data, model = setup(config)
-    train(config, train_data, test_data, model)
-    test(config, test_data, model)
+    train_data, test_data = get_data(config)
+    model = MLP().to(config.device)
+
+    optimizer = torch.optim.AdamW(model.parameters(), lr=config.lr)
+    criterion = nn.CrossEntropyLoss()
+    metrics = {}
+    losses = []
+    val_losses = [float('nan')]
+    accuracies = []
+    val_accuracies = [float('nan')]
+
+    for epoch in range(config.epochs):
+        iterator = tqdm(train_data, desc=f'Epoch {epoch + 1}/{config.epochs}')
+
+        for x, y in iterator:
+            loss, accuracy = forward_batch(config, x, y, model, criterion, optimizer=optimizer)
+            losses.append(loss)
+            metrics['loss'] = format(float(loss), '.3e')
+            accuracy = 100 * float(accuracy)
+            accuracies.append(accuracy)
+            accuracy = format(accuracy, '.3f')
+            metrics['accuracy'] = f'{accuracy}%'
+            iterator.set_postfix(metrics)
+
+        if epoch % config.eval_every == 0:
+            model.eval()
+            val_loss = 0
+            val_accuracy = 0
+
+            for x, y in test_data:
+                loss, accuracy = forward_batch(config, x, y, model, criterion)
+                val_loss += float(loss)
+                val_accuracy += float(accuracy)
+
+            val_loss = val_loss / len(test_data)
+            val_accuracy = 100 * val_accuracy / len(test_data)
+            val_losses.append(val_loss)
+            val_accuracies.append(val_accuracy)
+            metrics['val_loss'] = format(val_loss, '.3e')
+            val_accuracy = format(val_accuracy, '.3f')
+            metrics['val_accuracy'] = f'{val_accuracy}%'
+            iterator.set_postfix(metrics)  # FIXME
+            model.train()
+
+    show_curves(losses, val_losses, accuracies, val_accuracies)
+    model.eval()
+    visualize_predictions(config, test_data, model)
