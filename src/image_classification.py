@@ -28,7 +28,7 @@ def get_loaders(config):  # Put on GPU
     dataset = getattr(torchvision.datasets, config.dataset)
 
     train_data = dataset(
-        'files/',
+        config.path,
         train=True,
         download=True,
         transform=torchvision.transforms.Compose([
@@ -38,7 +38,7 @@ def get_loaders(config):  # Put on GPU
     train_loader = DataLoader(train_data, batch_size=config.batch_size, shuffle=True, pin_memory=True)
 
     test_data = dataset(
-        'files/',
+        config.path,
         train=False,
         download=True,
         transform=torchvision.transforms.Compose([
@@ -133,6 +133,7 @@ if __name__ == '__main__':
     parser.add_argument('--device', type=str, default='cuda')
     parser.add_argument('--epochs', type=int, default=5)
     parser.add_argument('--lr', type=float, default=1e-3)
+    parser.add_argument('--path', type=str, default='../files')
     parser.add_argument('--test-every', type=int, default=1)
     config = parser.parse_args()
 
