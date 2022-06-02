@@ -37,12 +37,14 @@ class CNN(nn.Module):
             hidden_dim=100
     ):
         super().__init__()
+
         self.embedding = nn.Conv2d(
             input_shape[0],
             2 ** embedding_filters_log,
             kernel_size=1,
             bias=False
         )
+
         num_stages = min(
             7,
             min(
@@ -50,6 +52,7 @@ class CNN(nn.Module):
                 int(log2(input_shape[-2]) - log2(embedding_filters_log))
             )
         )
+
         self.stages = []
         for i in range(num_stages):
             self.stages.append(CNNBlock(
@@ -58,6 +61,7 @@ class CNN(nn.Module):
                 dropout
             ))
         self.stages = nn.ModuleList(self.stages)
+
         out_filters = 2 ** (num_stages + embedding_filters_log)
         dim_x = input_shape[-2] // (2 ** num_stages)
         dim_y = input_shape[-1] // (2 ** num_stages)
@@ -66,9 +70,12 @@ class CNN(nn.Module):
 
     def forward(self, x):
         x = self.embedding(x)
+
         for stage in self.stages:
             x = stage(x)
+
         x = torch.flatten(x, 1)
         x = self.linear(x)
         x = self.logits(x)
+
         return x

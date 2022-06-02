@@ -8,12 +8,13 @@ from torch.utils.data import DataLoader
 import torchvision
 from tqdm import tqdm
 
-# plot.rcParams["figure.figsize"] = (20, 20)
 from models.cnn import CNN
 from models.efficient_net import EfficientNet
 from models.efficient_net_b0 import EfficientNetB0
 from models.mlp import MLP
 
+
+# plot.rcParams["figure.figsize"] = (20, 20)
 
 def get_loaders(config):
     try:
@@ -174,7 +175,7 @@ def visualize_predictions(config, loader, model):
             plot.subplot(5, 5, i * 5 + j + 1)
             plot.title(y_pred, color='green' if y_pred == y else 'red')
             plot.axis('off')
-            plot.imshow(x)  # FIXME (1, x, x)
+            plot.imshow(x)
 
     plot.show()
 
@@ -263,7 +264,7 @@ if __name__ == '__main__':
     parser.add_argument('--device', type=str, default='cuda')
     parser.add_argument('--epochs', type=int, default=30)
     parser.add_argument('--lr', type=float, default=1e-3)
-    parser.add_argument('--model', type=str, default='CNN')
+    parser.add_argument('--model', type=str, default='EfficientNetB0')
     parser.add_argument('--path', type=str, default='files')
     parser.add_argument('--test-every', type=int, default=1)
     config = parser.parse_args()
